@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}查询厂家信息 - 厂家保养人员管理系统{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>查询厂家信息</h1>
+    <p>请输入厂家ID查询相关信息</p>
+</div>
+
+<div class="card">
+    {% if error %}
+    <div class="alert alert-error">
+        {{ error }}
+    </div>
+    {% endif %}
+    
+    <form action="{{ url_for('query_manufacturer') }}" method="POST">
+        <div class="form-group">
+            <label for="manufacturer_id">🏭 厂家识别码：</label>
+            <input type="text" id="manufacturer_id" name="manufacturer_id" 
+                   placeholder="请输入您的厂家ID" required>
+            <small class="form-help">请输入系统分配的唯一厂家识别码</small>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">🔍 查询</button>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">← 返回首页</a>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3>❓ 找不到厂家ID？</h3>
+    <p>请联系系统管理员获取您的厂家识别码，或确认您是否已注册系统。</p>
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 厂家保养人员管理系统{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>厂家保养人员管理系统</h1>
+    <p>统一管理平台 - 扫码即可访问</p>
+</div>
+
+<div class="network-info">
+    <div class="info-card">
+        <h3>📡 网络连接信息</h3>
+        <p><strong>本机IP地址:</strong> {{ local_ip }}</p>
+        <p><strong>本机访问:</strong> <a href="{{ localhost_url }}" target="_blank">{{ localhost_url }}</a></p>
+        <p><strong>手机访问:</strong> <a href="{{ mobile_url }}" target="_blank">{{ mobile_url }}</a></p>
+        <div class="network-tip">
+            <small>💡 确保手机和电脑在同一WiFi网络下</small>
+        </div>
+    </div>
+</div>
+
+<div class="qr-section">
+    <div class="qr-code">
+        {% if qr_code_data %}
+        <img src="{{ qr_code_data }}" alt="系统访问二维码" class="qr-image">
+        {% else %}
+        <div class="empty-state">
+            <p>二维码生成失败</p>
+            <small>请刷新页面重试</small>
+        </div>
+        {% endif %}
+        <div class="qr-url">
+            <small>手机扫描访问: {{ mobile_url }}</small>
+        </div>
+    </div>
+    <div class="card" style="max-width: 400px;">
+        <h3>📋 使用说明</h3>
+        <div style="line-height: 1.8;">
+            <p>1. 确保手机和电脑在同一WiFi网络</p>
+            <p>2. 使用微信或浏览器扫描二维码</p>
+            <p>3. 输入您的厂家ID查询信息</p>
+            <p>4. 查看和修改保养人员信息</p>
+        </div>
+    </div>
+</div>
+
+<div class="action-section">
+    <a href="/query" class="btn btn-primary">
+        🔍 开始查询
+    </a>
+    
+    {% if user and user.role in ['super_admin', 'manufacturer_admin'] %}
+    <a href="/user_management" class="btn btn-secondary">
+        👥 用户管理
+    </a>
+    {% endif %}
+    
+    {% if user and user.role == 'super_admin' %}
+    <a href="/admin" class="btn btn-secondary">
+        ⚙️ 系统管理
+    </a>
+    {% endif %}
+</div>
+
+<div class="quick-links">
+    <h3>快速链接</h3>
+    <div class="link-grid">
+        <a href="/query" class="link-card">
+            <span class="link-icon">🔍</span>
+            <span class="link-text">查询厂家</span>
+        </a>
+        
+        {% if user and user.role in ['super_admin', 'manufacturer_admin'] %}
+        <a href="/admin" class="link-card">
+            <span class="link-icon">📊</span>
+            <span class="link-text">数据管理</span>
+        </a>
+        {% endif %}
+        
+        {% if user and user.role in ['super_admin', 'manufacturer_admin'] %}
+        <a href="/check-structure" class="link-card">
+            <span class="link-icon">🔧</span>
+            <span class="link-text">结构检查</span>
+        </a>
+        {% endif %}
+        
+        {% if user and user.role in ['super_admin', 'manufacturer_admin'] %}
+        <a href="/export" class="link-card">
+            <span class="link-icon">💾</span>
+            <span class="link-text">数据导出</span>
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

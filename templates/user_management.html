@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}用户管理 - 厂家保养人员管理系统{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>用户管理系统</h1>
+    <p>管理系统的用户账户和权限</p>
+</div>
+
+<!-- 添加用户表单 -->
+<div class="card">
+    <h3>➕ 添加新用户</h3>
+    <form id="addUserForm" class="user-form">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="username">👤 用户名：</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">🔒 密码：</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="real_name">👤 真实姓名：</label>
+                <input type="text" id="real_name" name="real_name" required>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="role">🎭 用户角色：</label>
+                <select id="role" name="role" required>
+                    {% if user.role == 'super_admin' %}
+                    <option value="super_admin">超级管理员</option>
+                    <option value="manufacturer_admin">厂家管理员</option>
+                    {% endif %}
+                    <option value="user" selected>普通用户</option>
+                </select>
+            </div>
+            
+            {% if user.role == 'super_admin' %}
+            <div class="form-group">
+                <label for="manufacturer_id">🏭 所属厂家：</label>
+                <select id="manufacturer_id" name="manufacturer_id">
+                    <option value="">无（仅超级管理员）</option>
+                    {% for manufacturer in manufacturers %}
+                    <option value="{{ manufacturer.manufacturer_id }}">{{ manufacturer.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            
+            <div class="form-group">
+                <label for="email">📧 邮箱：</label>
+                <input type="email" id="email" name="email">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="phone">📞 电话：</label>
+                <input type="tel" id="phone" name="phone">
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">✅ 添加用户</button>
+            <button type="reset" class="btn btn-secondary">🔄 重置</button>
+        </div>
+    </form>
+</div>
+
+<!-- 用户列表 -->
+<div class="card">
+    <h3>👥 用户列表 ({{ users|length }} 人)</h3>
+    {% if users %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>用户名</th>
+                    <th>真实姓名</th>
+                    <th>角色</th>
+                    <th>所属厂家</th>
+                    <th>邮箱</th>
+                    <th>电话</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user_item in users %}
+                <tr>
+                    <td>{{ user_item.username }}</td>
+                    <td>{{ user_item.real_name }}</td>
+                    <td>
+                        <span class="role-badge role-{{ user_item.role }}">
+                            {{ user_roles[user_item.role] }}
+                        </span>
+                    </td>
+                    <td>{{ user_item.manufacturer_id or '无' }}</td>
+                    <td>{{ user_item.email or '未填写' }}</td>
+                    <td>{{ user_item.phone or '未填写' }}</td>
+                    <td>
+                        {% if user_item.is_active %}
+                        <span class="status-active">活跃</span>
+                        {% else %}
+                        <span class="status-inactive">禁用</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ user_item.created_at[:16].replace('T', ' ') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>暂无用户记录</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="footer-actions">
+    <a href="/" class="btn btn-secondary">🏠 返回首页</a>
+</div>
+
+<script>
+    document.getElementById('addUserForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch('/add_user', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                this.reset();
+                location.reload(); // 刷新页面显示新用户
+            } else {
+                alert('添加失败: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('添加失败: ' + error);
+        });
+    });
+
+    // 角色选择变化时处理厂家选择框
+    document.getElementById('role').addEventListener('change', function() {
+        const manufacturerSelect = document.getElementById('manufacturer_id');
+        if (this.value === 'super_admin') {
+            manufacturerSelect.value = '';
+            manufacturerSelect.disabled = true;
+        } else {
+            manufacturerSelect.disabled = false;
+        }
+    });
+</script>
+{% endblock %}

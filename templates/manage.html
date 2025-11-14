@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}保养人员管理 - {{ manufacturer.name }}{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>{{ manufacturer.name }} - 保养人员管理</h1>
+    <div class="manufacturer-info">
+        <p><strong>厂家ID:</strong> {{ manufacturer.manufacturer_id }} | 
+           <strong>联系人:</strong> {{ manufacturer.contact_person }} | 
+           <strong>电话:</strong> {{ manufacturer.phone }} | 
+           <strong>邮箱:</strong> {{ manufacturer.email }}</p>
+    </div>
+</div>
+
+<!-- 成功消息显示 -->
+{% if success %}
+<div class="alert alert-success">
+    ✅ {{ success }}
+</div>
+{% endif %}
+
+<!-- 错误消息显示 -->
+{% if error %}
+<div class="alert alert-error">
+    ❌ {{ error }}
+</div>
+{% endif %}
+
+<!-- 当前保养人员列表 -->
+<div class="card">
+    <h2>👥 当前保养人员 ({{ personnel|length }} 人)</h2>
+    {% if personnel %}
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>姓名</th>
+                    <th>工号</th>
+                    <th>入职日期</th>
+                    <th>岗位</th>
+                    <th>状态</th>
+                    <th>备注</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for person in personnel %}
+                <tr>
+                    <td>{{ person.personnel_name }}</td>
+                    <td>{{ person.name_id or '未填写' }}</td>
+                    <td>{{ person.hire_date or '未填写' }}</td>
+                    <td>{{ person.position or '未填写' }}</td>
+                    <td>
+                        {% if person.is_active %}
+                        <span class="status-active">活跃</span>
+                        {% else %}
+                        <span class="status-inactive">已删除</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ person.note or '无' }}</td>
+                    <td>{{ person.updated_at[:16].replace('T', ' ') if person.updated_at else '未记录' }}</td>
+                    <td class="actions">
+                        <button class="btn btn-small btn-edit" 
+                                data-id="{{ person.id }}"
+                                data-name="{{ person.personnel_name }}"
+                                data-name_id="{{ person.name_id or '' }}"
+                                data-hire_date="{{ person.hire_date or '' }}"
+                                data-position="{{ person.position or '' }}"
+                                data-manufacturer_name="{{ person.manufacturer_name or '' }}"
+                                data-note="{{ person.note or '' }}"
+                                data-active="{{ person.is_active }}">
+                            ✏️ 编辑
+                        </button>
+                        {% if person.is_active %}
+                        <form action="{{ url_for('delete_personnel') }}" method="POST" class="inline-form">
+                            <input type="hidden" name="manufacturer_id" value="{{ manufacturer.manufacturer_id }}">
+                            <input type="hidden" name="personnel_id" value="{{ person.id }}">
+                            <button type="submit" class="btn btn-small btn-delete" data-name="{{ person.personnel_name }}">
+                                🗑️ 删除
+                            </button>
+                        </form>
+                        {% else %}
+                        <form action="{{ url_for('restore_personnel') }}" method="POST" class="inline-form">
+                            <input type="hidden" name="manufacturer_id" value="{{ manufacturer.manufacturer_id }}">
+                            <input type="hidden" name="personnel_id" value="{{ person.id }}">
+                            <button type="submit" class="btn btn-small btn-restore" data-name="{{ person.personnel_name }}">
+                                🔄 恢复
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>暂无保养人员记录</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 添加新人员 -->
+<div class="card">
+    <h2>➕ 添加新保养人员</h2>
+    <form action="{{ url_for('add_personnel') }}" method="POST" class="personnel-form" id="addPersonnelForm">
+        <input type="hidden" name="manufacturer_id" value="{{ manufacturer.manufacturer_id }}">
+        <input type="hidden" name="manufacturer_name" value="{{ manufacturer.name }}">
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="personnel_name">👤 姓名：</label>
+                <input type="text" id="personnel_name" name="personnel_name" required 
+                       placeholder="请输入保养人员姓名">
+            </div>
+            
+            <div class="form-group">
+                <label for="name_id">🆔 工号：</label>
+                <input type="text" id="name_id" name="name_id" 
+                       placeholder="请输入员工工号">
+            </div>
+            
+            <div class="form-group">
+                <label for="hire_date">📅 入职日期：</label>
+                <input type="date" id="hire_date" name="hire_date" required>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="position">💼 岗位：</label>
+                <input type="text" id="position" name="position" 
+                       placeholder="请输入岗位职责">
+            </div>
+            
+            <div class="form-group full-width">
+                <label for="note">📝 备注信息：</label>
+                <textarea id="note" name="note" rows="3" 
+                          placeholder="可在此填写保养人员的其他相关信息"></textarea>
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">✅ 添加人员</button>
+            <button type="reset" class="btn btn-secondary">🔄 清空表单</button>
+        </div>
+    </form>
+</div>
+
+<!-- 编辑模态框 -->
+<div id="editModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>✏️ 编辑人员信息</h3>
+        <form action="{{ url_for('update_personnel') }}" method="POST" id="editForm">
+            <input type="hidden" name="manufacturer_id" value="{{ manufacturer.manufacturer_id }}">
+            <input type="hidden" name="personnel_id" id="editPersonnelId">
+            <input type="hidden" name="is_active" id="editIsActive">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="editPersonnelName">👤 姓名：</label>
+                    <input type="text" id="editPersonnelName" name="personnel_name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editNameId">🆔 工号：</label>
+                    <input type="text" id="editNameId" name="name_id" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editHireDate">📅 入职日期：</label>
+                    <input type="date" id="editHireDate" name="hire_date" required>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="editPosition">💼 岗位：</label>
+                    <input type="text" id="editPosition" name="position">
+                </div>
+                
+                <div class="form-group">
+                    <label for="editManufacturerName">🏢 厂家名称：</label>
+                    <input type="text" id="editManufacturerName" name="manufacturer_name" value="{{ manufacturer.name }}" readonly>
+                    <small class="form-help">自动填充，不可编辑</small>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="editNote">📝 备注信息：</label>
+                <textarea id="editNote" name="note" rows="3"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>状态：</label>
+                <div class="status-display">
+                    <span id="editStatusDisplay" class="status-active">● 活跃</span>
+                    <small class="form-help">状态不可直接编辑，请使用删除/恢复功能</small>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 保存修改</button>
+                <button type="button" class="btn btn-secondary" onclick="closeEditModal()">❌ 取消</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="footer-actions">
+    <a href="{{ url_for('query_manufacturer') }}" class="btn btn-secondary">← 返回查询</a>
+    <a href="{{ url_for('index') }}" class="btn btn-secondary">🏠 返回首页</a>
+</div>
+
+<script>
+    // 为所有编辑按钮添加事件监听器
+    document.addEventListener('DOMContentLoaded', function() {
+        // 编辑按钮点击事件
+        const editButtons = document.querySelectorAll('.btn-edit');
+        editButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const id = this.getAttribute('data-id');
+                const name = this.getAttribute('data-name');
+                const name_id = this.getAttribute('data-name_id');
+                const hire_date = this.getAttribute('data-hire_date');
+                const position = this.getAttribute('data-position');
+                const manufacturer_name = this.getAttribute('data-manufacturer_name');
+                const note = this.getAttribute('data-note');
+                const isActive = this.getAttribute('data-active') === 'True';
+                
+                openEditModal(id, name, name_id, hire_date, position, manufacturer_name, note, isActive);
+            });
+        });
+        
+        // 删除按钮点击事件 - 添加确认对话框
+        const deleteButtons = document.querySelectorAll('.btn-delete');
+        deleteButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                const name = this.getAttribute('data-name');
+                if (!confirm('确定要删除 ' + name + ' 吗？删除后可以恢复。')) {
+                    e.preventDefault(); // 如果用户取消，阻止表单提交
+                }
+            });
+        });
+        
+        // 恢复按钮点击事件
+        const restoreButtons = document.querySelectorAll('.btn-restore');
+        restoreButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                const name = this.getAttribute('data-name');
+                if (!confirm('确定要恢复 ' + name + ' 吗？')) {
+                    e.preventDefault();
+                }
+            });
+        });
+        
+        // 添加表单提交时的简单验证
+        const addForm = document.getElementById('addPersonnelForm');
+        if (addForm) {
+            addForm.addEventListener('submit', function(e) {
+                const nameInput = document.getElementById('personnel_name');
+                const nameIdInput = document.getElementById('name_id');
+                const hireDateInput = document.getElementById('hire_date');
+                
+                if (!nameInput.value.trim()) {
+                    e.preventDefault();
+                    alert('请输入保养人员姓名');
+                    nameInput.focus();
+                    return;
+                }
+                
+                if (!nameIdInput.value.trim()) {
+                    e.preventDefault();
+                    alert('请输入员工工号');
+                    nameIdInput.focus();
+                    return;
+                }
+                
+                if (!hireDateInput.value) {
+                    e.preventDefault();
+                    alert('请选择入职日期');
+                    hireDateInput.focus();
+                    return;
+                }
+            });
+        }
+    });
+    
+    function openEditModal(id, name, name_id, hire_date, position, manufacturer_name, note, isActive) {
+        document.getElementById('editPersonnelId').value = id;
+        document.getElementById('editPersonnelName').value = name;
+        document.getElementById('editNameId').value = name_id || '';
+        document.getElementById('editHireDate').value = hire_date || '';
+        document.getElementById('editPosition').value = position || '';
+        document.getElementById('editManufacturerName').value = manufacturer_name || '';
+        document.getElementById('editNote').value = note || '';
+        document.getElementById('editIsActive').value = isActive;
+        
+        // 更新状态显示
+        const statusDisplay = document.getElementById('editStatusDisplay');
+        if (isActive) {
+            statusDisplay.textContent = '● 活跃';
+            statusDisplay.className = 'status-active';
+        } else {
+            statusDisplay.textContent = '● 已删除';
+            statusDisplay.className = 'status-inactive';
+        }
+        
+        document.getElementById('editModal').style.display = 'block';
+    }
+    
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+    
+    // 点击模态框外部关闭
+    window.onclick = function(event) {
+        const modal = document.getElementById('editModal');
+        if (event.target === modal) {
+            closeEditModal();
+        }
+    }
+</script>
+{% endblock %}
