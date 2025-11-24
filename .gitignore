@@ -1,16 +1,39 @@
 @"
-venv/
+__pycache__/ 文件夹
+*.pyc 文件
+venv/ 或 env/ 虚拟环境文件夹
+.env 环境变量文件
+*.log 日志文件
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
 .env
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
+.venv
+env/
+venv/
+.Python
+env.bak/
+venv.bak/
+*.egg-info/
+.installed.cfg
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
 "@ | Out-File -FilePath ".gitignore" -Encoding utf8
