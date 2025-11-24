@@ -17,6 +17,13 @@ load_dotenv()
 # 创建 Flask 应用
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'manufacturer-system-secret-key-2024')
+# 修复 Vercel 会话配置
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=1800  # 30分钟
+)
 
 # Supabase 配置
 SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -1061,6 +1068,46 @@ def reset_admin():
     ensure_admin_user()
     return redirect(url_for('login'))
 
+@app.route('/debug')
+def debug():
+    """调试信息页面"""
+    info = {
+        "app_running": True,
+        "database_connected": client is not None,
+        "session_user": session.get('user'),
+        "environment": "production",
+        "supabase_url_set": bool(os.getenv('SUPABASE_URL')),
+        "supabase_key_set": bool(os.getenv('SUPABASE_KEY'))
+    }
+    return jsonify(info)
+
+@app.route('/fix-login')
+def fix_login():
+    """修复登录会话"""
+    session.clear()
+    return redirect(url_for('login'))
+@app.route('/test-db')
+def test_db():
+    """测试数据库连接"""
+    try:
+        # 测试查询
+        test_response = client.select('users', {'limit': '1'})
+        
+        if test_response['error']:
+            return jsonify({
+                "database_status": "error",
+                "error": test_response['error']
+            })
+        else:
+            return jsonify({
+                "database_status": "connected",
+                "user_count": len(test_response['data'])
+            })
+    except Exception as e:
+        return jsonify({
+            "database_status": "failed",
+            "error": str(e)
+        })
 @app.errorhandler(404)
 def not_found(error):
     """404错误处理"""
