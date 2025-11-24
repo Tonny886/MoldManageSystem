@@ -1116,10 +1116,11 @@ def fix_existing_passwords():
   # fix_existing_passwords()
 
 if __name__ == '__main__':
-    # 获取环境变量中的端口，如果没有则使用5000
+    
     port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     # 关闭调试模式
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=debug)
    
 # if __name__ == '__main__':
 #     local_ip = get_local_ip()
