@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -22,6 +22,55 @@
                 <a href="/logout" class="btn btn-small btn-logout">退出</a>
                 {% else %}
                 <a href="/login" class="btn btn-small btn-login">登录</a>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- 主要内容区域 -->
+        <div class="main-content">
+            {% block content %}{% endblock %}
+        </div>
+        
+        <!-- 页脚 -->
+        <div class="footer">
+            <p>当前用户: 
+                {% if user %}
+                    {{ user.real_name }} ({{ user_roles[user.role] }})
+                {% else %}
+                    未登录
+                {% endif %}
+            </p>
+            <p class="version-info">系统版本: 2.0 </p>
+        </div>
+    </div>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html> -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}厂家保养人员管理系统{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部导航栏 -->
+        <div class="navbar">
+            <div class="nav-brand">
+                <img src="{{ url_for('static', filename='images/brother-logo.png') }}" alt="Brother Logo" class="logo">
+                <h1>厂家保养人员管理系统</h1>
+            </div>
+            <div class="nav-user">
+                {% if user %}
+                <span class="user-info">
+                    {{ user.real_name }} ({{ user_roles[user.role] }})
+                </span>
+                <a href="{{ url_for('logout') }}" class="btn btn-small btn-logout">退出</a>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="btn btn-small btn-login">登录</a>
                 {% endif %}
             </div>
         </div>

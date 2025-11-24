@@ -4,10 +4,6 @@
     {
       "src": "api/index.py",
       "use": "@vercel/python"
-    },
-    {
-      "src": "templates/**",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -21,6 +17,6 @@
     }
   ],
   "env": {
-    "PYTHONPATH": "/var/task:/var/task/api"
+    "PYTHONPATH": "/var/task"
   }
 }

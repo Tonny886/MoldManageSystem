@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, url_for, session
 import json
 import qrcode
 import base64
@@ -15,7 +15,11 @@ from supabase import create_client, Client
 load_dotenv()
 
 # 创建 Flask 应用
-app = Flask(__name__)
+app = Flask(__name__,
+    static_folder='static',
+    static_url_path='/static',
+    template_folder='templates'
+)
 app.secret_key = os.getenv('SECRET_KEY', 'manufacturer-system-secret-key-2024')
 # 修复 Vercel 会话配置
 app.config.update(
@@ -353,6 +357,10 @@ def logout():
     session.pop('user', None)
     print(f"✅ 用户 {username} 已退出登录")
     return redirect(url_for('login'))
+# 确保静态文件路由
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory(app.static_folder, filename)
 
 @app.route('/')
 @login_required()
