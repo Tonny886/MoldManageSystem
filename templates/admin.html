@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}系统管理 - 厂家保养人员管理系统{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>系统管理</h1>
+    <p>系统数据管理和统计</p>
+</div>
+
+{% if request.args.get('message') %}
+<div class="alert alert-success">
+    ✅ {{ request.args.get('message') }}
+</div>
+{% endif %}
+
+{% if request.args.get('error') %}
+<div class="alert alert-error">
+    ❌ {{ request.args.get('error') }}
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>📊 数据统计</h2>
+    <div class="stats">
+        <div class="stat-item">
+            <h3>{{ data.manufacturers|length }}</h3>
+            <p>注册厂家</p>
+        </div>
+        <div class="stat-item">
+            <h3>{{ data.maintenance_personnel|length }}</h3>
+            <p>保养人员</p>
+        </div>
+        <div class="stat-item">
+            <h3>{{ data.maintenance_personnel|selectattr('is_active', 'equalto', true)|list|length }}</h3>
+            <p>活跃人员</p>
+        </div>
+        <div class="stat-item">
+            <h3>{{ data.users|length }}</h3>
+            <p>系统用户</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>💾 数据管理</h2>
+    <div class="action-buttons">
+        <a href="{{ url_for('export_data') }}" class="btn btn-primary" download="backup.json">
+            📥 导出数据
+        </a>
+        
+        <form action="{{ url_for('import_data') }}" method="POST" enctype="multipart/form-data" class="import-form">
+            <label for="file" class="btn btn-secondary">
+                📤 导入数据
+            </label>
+            <input type="file" id="file" name="file" accept=".json" required 
+                   onchange="this.form.submit()" style="display: none;">
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h2>🏭 厂家列表</h2>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>厂家ID</th>
+                    <th>厂家名称</th>
+                    <th>联系人</th>
+                    <th>电话</th>
+                    <th>邮箱</th>
+                    <th>注册时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for manufacturer in data.manufacturers %}
+                <tr>
+                    <td>{{ manufacturer.manufacturer_id }}</td>
+                    <td>{{ manufacturer.name }}</td>
+                    <td>{{ manufacturer.contact_person }}</td>
+                    <td>{{ manufacturer.phone }}</td>
+                    <td>{{ manufacturer.email }}</td>
+                    <td>{{ manufacturer.created_at[:16] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>👥 保养人员列表</h2>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>姓名</th>
+                    <th>厂家ID</th>
+                    <th>工号</th>
+                    <th>岗位</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>更新时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for person in data.maintenance_personnel %}
+                <tr>
+                    <td>{{ person.personnel_name }}</td>
+                    <td>{{ person.manufacturer_id }}</td>
+                    <td>{{ person.name_id or '未填写' }}</td>
+                    <td>{{ person.position or '未填写' }}</td>
+                    <td>
+                        {% if person.is_active %}
+                        <span class="status-active">活跃</span>
+                        {% else %}
+                        <span class="status-inactive">已删除</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ person.created_at[:16] }}</td>
+                    <td>{{ person.updated_at[:16] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="footer-actions">
+    <a href="/" class="btn btn-secondary">🏠 返回首页</a>
+</div>
+{% endblock %}

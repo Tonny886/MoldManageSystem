@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}用户登录 - 厂家保养人员管理系统{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-header">
+        <h1>用户登录</h1>
+        <p>请输入您的账户信息</p>
+    </div>
+    
+    {% if error %}
+    <div class="alert alert-error">
+        {{ error }}
+    </div>
+    {% endif %}
+    
+    <div class="card">
+        <form action="/login" method="POST">
+            <div class="form-group">
+                <label for="username">👤 用户名：</label>
+                <input type="text" id="username" name="username" 
+                       placeholder="请输入用户名" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">🔒 密码：</label>
+                <input type="password" id="password" name="password" 
+                       placeholder="请输入密码" required>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-login">
+                    🔑 登录
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <div class="login-footer">
+        <!-- <p><strong>默认管理员账号</strong></p>
+        <p>用户名: <strong>admin</strong> | 密码: <strong>admin123</strong></p> -->
+        <p style="margin-top: 10px;">如有问题，请联系系统管理员</p>
+    </div>
+</div>
+{% endblock %}

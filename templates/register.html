@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}新厂家注册 - 厂家保养人员管理系统{% endblock %}
+
+{% block content %}
+<div class="header">
+    <h1>新厂家注册</h1>
+    <p>厂家ID: <strong>{{ manufacturer_id }}</strong></p>
+</div>
+
+<div class="card">
+    {% if error %}
+    <div class="alert alert-error">
+        {{ error }}
+    </div>
+    {% endif %}
+    
+    <form action="{{ url_for('register_manufacturer') }}" method="POST">
+        <input type="hidden" name="manufacturer_id" value="{{ manufacturer_id }}">
+        
+        <div class="form-group">
+            <label for="name">🏢 厂家名称：</label>
+            <input type="text" id="name" name="name" placeholder="请输入完整的厂家名称" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="contact_person">👤 联系人：</label>
+            <input type="text" id="contact_person" name="contact_person" placeholder="主要负责人姓名" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="phone">📞 联系电话：</label>
+            <input type="tel" id="phone" name="phone" placeholder="手机或固定电话" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="email">📧 电子邮箱：</label>
+            <input type="email" id="email" name="email" placeholder="用于接收通知的邮箱">
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">✅ 注册</button>
+            <a href="{{ url_for('query_manufacturer') }}" class="btn btn-secondary">← 返回</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
