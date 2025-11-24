@@ -1171,11 +1171,8 @@ def fix_existing_passwords():
   # fix_existing_passwords()
 
 if __name__ == '__main__':
-    
-    port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
-    # 关闭调试模式
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    # 这个块在 Vercel 上不会执行
+    app.run(debug=True)
    
 # if __name__ == '__main__':
 #     local_ip = get_local_ip()
