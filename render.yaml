@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: mold-manage-system
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SUPABASE_URL
+        value: https://ohfbuvrnocrectvfjiyf.supabase.co
+      - key: SUPABASE_KEY  
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZmJ1dnJub2NyZWN0dmZqaXlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4MzgzODUsImV4cCI6MjA3ODQxNDM4NX0.4p_hFt7QnKhG6iWwN8hTQtGuYa4YX-8RSS-ekr9kQBk
+      - key: SECRET_KEY
+        value: manufacturer-system-secret-key-2024
