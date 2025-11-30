@@ -3,7 +3,9 @@ from dotenv import load_dotenv
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, url_for, session
 import json
-# 移除 qrcode, base64, BytesIO, PIL 相关导入
+import qrcode
+import base64
+from io import BytesIO
 import socket
 import hashlib
 from functools import wraps
@@ -20,15 +22,15 @@ app = Flask(__name__,
 )
 app.secret_key = os.getenv('SECRET_KEY', 'manufacturer-system-secret-key-2024')
 
-# 修复会话配置
+# 修复 Railway 会话配置
 app.config.update(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
-    PERMANENT_SESSION_LIFETIME=1800
+    PERMANENT_SESSION_LIFETIME=1800  # 30分钟
 )
 
-# Supabase 配置
+# Supabase 配置 - 使用延迟初始化
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
@@ -39,7 +41,7 @@ USER_ROLES = {
     'user': '普通用户'
 }
 
-# 全局客户端变量
+# 全局客户端变量 - 延迟初始化
 client = None
 
 def get_client():
@@ -55,7 +57,7 @@ def get_client():
     return client
 
 def init_app():
-    """应用初始化"""
+    """应用初始化（在第一个请求时调用）"""
     try:
         client = get_client()
         if client:
@@ -64,19 +66,50 @@ def init_app():
     except Exception as e:
         print(f"❌ 应用初始化失败: {e}")
 
+# 上下文处理器 - 自动在所有模板中注入 user_roles
 @app.context_processor
 def inject_user_roles():
+    """自动在所有模板中注入 user_roles 变量"""
     return dict(user_roles=USER_ROLES)
 
 def get_local_ip():
-    """获取本机IP地址（简化版）"""
-    return request.host_url.rstrip('/')
+    """获取本机在局域网中的IP地址"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception as e:
+        print(f"获取本机IP失败: {e}")
+        return "127.0.0.1"
 
 def generate_qr_code(url):
-    """二维码生成占位函数（已移除功能）"""
-    return None  # 返回 None，前端会隐藏二维码区域
+    """生成二维码图片并返回base64编码"""
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        return f"data:image/png;base64,{img_str}"
+    except Exception as e:
+        print(f"二维码生成失败: {e}")
+        return None
 
 def hash_password(password):
+    """密码加密"""
     return hashlib.sha256(password.encode()).hexdigest()
 
 class SupabaseClient:
@@ -87,6 +120,7 @@ class SupabaseClient:
         self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     def select(self, table, filters=None):
+        """查询数据"""
         try:
             query = self.client.table(table).select("*")
             
@@ -105,8 +139,8 @@ class SupabaseClient:
                         query = query.eq('id', item_id)
             
             response = query.execute()
-            data = response.data
             
+            data = response.data
             if filters and 'limit' in filters:
                 limit = int(filters['limit'])
                 data = data[:limit]
@@ -118,6 +152,7 @@ class SupabaseClient:
             return {'data': [], 'error': str(e)}
     
     def insert(self, table, data):
+        """插入数据"""
         try:
             data['created_at'] = datetime.now().isoformat()
             if table == 'maintenance_personnel':
@@ -137,6 +172,7 @@ class SupabaseClient:
             return {'data': None, 'error': str(e)}
     
     def update(self, table, data, filters=None):
+        """更新数据"""
         try:
             query = self.client.table(table)
             
@@ -164,6 +200,7 @@ class SupabaseClient:
             return {'data': None, 'error': str(e)}
 
 def ensure_admin_user():
+    """确保管理员用户存在"""
     try:
         client = get_client()
         if not client:
@@ -203,6 +240,7 @@ def ensure_admin_user():
         return False
 
 def init_supabase_data():
+    """初始化 Supabase 数据"""
     try:
         client = get_client()
         if not client:
@@ -224,6 +262,7 @@ def init_supabase_data():
             if not result['error']:
                 print("✅ 示例厂家创建成功")
         
+        # 确保管理员用户存在
         return ensure_admin_user()
         
     except Exception as e:
@@ -231,9 +270,11 @@ def init_supabase_data():
         return False
 
 def login_required(role=None):
+    """登录验证装饰器"""
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
+            # 延迟初始化应用
             if client is None:
                 init_app()
                 
@@ -251,20 +292,23 @@ def login_required(role=None):
 
 @app.before_request
 def before_request():
+    """在每次请求前检查初始化"""
     if client is None:
         init_app()
 
 @app.route('/')
 def home():
+    """首页 - 用于健康检查"""
     return jsonify({
         "status": "success", 
         "message": "厂家保养人员管理系统",
-        "platform": "Render",
+        "platform": "Railway",
         "database_connected": client is not None
     })
 
 @app.route('/health')
 def health():
+    """健康检查端点"""
     db_status = "connected" if client else "disconnected"
     return jsonify({
         "status": "healthy",
@@ -274,6 +318,7 @@ def health():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    """用户登录页面"""
     if 'user' in session:
         return redirect(url_for('index'))
     
@@ -289,6 +334,7 @@ def login():
             if not client:
                 return render_template('login.html', error='数据库连接失败，请稍后重试')
             
+            # 查询用户信息
             user_response = client.select('users', {'username': f'eq.{username}'})
             
             if not user_response['data']:
@@ -296,15 +342,18 @@ def login():
             
             user = user_response['data'][0]
             
+            # 检查用户是否激活
             if not user.get('is_active', True):
                 return render_template('login.html', error='用户已被禁用，请联系管理员')
             
+            # 验证密码
             input_password_hash = hash_password(password)
             stored_password_hash = user['password']
             
             if stored_password_hash != input_password_hash:
                 return render_template('login.html', error='用户名或密码错误')
             
+            # 登录成功
             session['user'] = {
                 'id': user['id'],
                 'username': user['username'],
@@ -324,10 +373,11 @@ def login():
 @app.route('/index')
 @login_required()
 def index():
+    """系统首页"""
     try:
+        # 在 Railway 环境中，使用动态URL生成二维码
         current_url = request.host_url.rstrip('/')
-        # 移除二维码生成，只传递URL
-        qr_code_data = None
+        qr_code_data = generate_qr_code(current_url)
         
         return render_template('index.html', 
                              qr_code_data=qr_code_data, 
@@ -342,10 +392,11 @@ def index():
                              user=session.get('user'),
                              user_roles=USER_ROLES)
 
-# 其他路由保持不变，但需要添加客户端检查
+# 其他路由函数保持不变，但需要在每个函数开头添加客户端检查
 @app.route('/query', methods=['GET', 'POST'])
 @login_required()
 def query_manufacturer():
+    """查询厂家信息页面"""
     client = get_client()
     if not client:
         return render_template('error.html', error="数据库连接失败", message="请稍后重试")
@@ -359,6 +410,7 @@ def query_manufacturer():
             return render_template('query.html', error='请输入厂家ID', user=user)
         
         try:
+            # 权限检查
             if user['role'] == 'user' and user.get('manufacturer_id') != manufacturer_id:
                 return render_template('query.html', 
                                      error='您只能查询自己厂家的信息', 
@@ -413,8 +465,8 @@ def not_found(error):
 def internal_error(error):
     return render_template('error.html', error="服务器内部错误", message="服务器遇到意外错误，请稍后重试"), 500
 
-# 启动配置
+# Railway 需要的启动配置
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
+    port = int(os.environ.get('PORT', 5000))
     print(f"🚀 启动厂家保养人员管理系统在端口 {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
