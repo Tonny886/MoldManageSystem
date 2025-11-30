@@ -37,3 +37,4 @@ coverage.xml
 .dmypy.json
 dmypy.json
 "@ | Out-File -FilePath ".gitignore" -Encoding utf8
+.vercel

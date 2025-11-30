@@ -2,4 +2,5 @@ Flask==2.3.3
 python-dotenv==1.0.0
 supabase==2.3.0
 qrcode==7.4.2
-Pillow==9.5.0  # 降级到更稳定的版本
+Pillow==9.5.0
+gunicorn==21.2.0
