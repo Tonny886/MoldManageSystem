@@ -73,7 +73,7 @@ def get_local_ip():
 
 def generate_qr_code(url):
     """二维码生成占位函数（已移除功能）"""
-    return None  # 返回 None，前端会隐藏二维码区域
+    return None
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -253,7 +253,7 @@ def before_request():
     if client is None:
         init_app()
 
-# ========== 路由定义开始 ==========
+# ========== 修正后的路由定义开始 ==========
 
 @app.route('/')
 def home():
@@ -267,7 +267,7 @@ def home():
 
 @app.route('/health')
 def health():
-    """健康检查端点（独立于登录状态）"""
+    """健康检查端点"""
     db_status = "connected" if client else "disconnected"
     return jsonify({
         "status": "healthy",
@@ -416,6 +416,8 @@ def query_manufacturer():
             return render_template('query.html', error='系统错误，请稍后重试', user=user)
     
     return render_template('query.html', user=user)
+
+# ========== 其余的路由保持不变 ==========
 
 @app.route('/register', methods=['POST'])
 @login_required(role=['super_admin', 'manufacturer_admin'])
@@ -904,12 +906,11 @@ def user_management():
 def add_user():
     """添加新用户"""
     try:
-        # 获取原始密码
         raw_password = request.form.get('password')
         
         user_data = {
             'username': request.form.get('username'),
-            'password': hash_password(raw_password),  # 确保密码哈希
+            'password': hash_password(raw_password),
             'real_name': request.form.get('real_name'),
             'role': request.form.get('role'),
             'manufacturer_id': request.form.get('manufacturer_id') or None,
@@ -956,12 +957,10 @@ def reset_password():
         if not username or not new_password:
             return jsonify({'success': False, 'error': '请提供用户名和新密码'})
         
-        # 查找用户
         user_response = client.select('users', {'username': f'eq.{username}'})
         if not user_response['data']:
             return jsonify({'success': False, 'error': '用户不存在'})
         
-        # 更新密码为哈希值
         hashed_password = hash_password(new_password)
         update_response = client.update(
             'users', 
@@ -984,7 +983,6 @@ def reset_password():
 @login_required(role=['super_admin'])
 def admin():
     """系统管理页面"""
-    # 获取所有数据用于统计
     manufacturers_response = client.select('manufacturers')
     personnel_response = client.select('maintenance_personnel')
     users_response = client.select('users')
@@ -1049,7 +1047,6 @@ def check_structure():
 @app.route('/reset_admin')
 def reset_admin():
     """重置管理员账户（开发使用）"""
-    # 确保管理员用户存在
     ensure_admin_user()
     return redirect(url_for('login'))
 
@@ -1057,45 +1054,6 @@ def reset_admin():
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory(app.static_folder, filename)
-
-#欢迎页面
-@app.route('/')
-def home():
-    """根路径"""
-    # 如果用户已登录，重定向到首页
-    if 'user' in session:
-        return redirect(url_for('index'))
-    # 否则显示欢迎页面
-    else:
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>厂家保养人员管理系统</title>
-            <style>
-                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-                .container { max-width: 600px; margin: 0 auto; }
-                .btn { display: inline-block; padding: 12px 24px; background: #007bff; color: white; 
-                       text-decoration: none; border-radius: 5px; margin: 10px; }
-                .btn-secondary { background: #6c757d; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🏭 厂家保养人员管理系统</h1>
-                <p>专业的企业人员管理系统，支持权限管理和厂家数据管理</p>
-                <div style="margin: 30px 0;">
-                    <a href="/login" class="btn">🔐 登录系统</a>
-                    <a href="/health" class="btn btn-secondary">❤️ 系统状态</a>
-                </div>
-                <div style="margin-top: 40px; color: #666;">
-                    <p>默认管理员账号: <strong>admin</strong> / <strong>admin123</strong></p>
-                    <p>© 2024 厂家保养人员管理系统 - Powered by Flask & Supabase</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
 
 # 错误处理
 @app.errorhandler(404)
@@ -1116,7 +1074,6 @@ def internal_error(error):
         <style>
             body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
             .error {{ background: #ffeaea; padding: 20px; border-radius: 5px; }}
-            .success {{ background: #eaffea; padding: 20px; border-radius: 5px; }}
             pre {{ background: #f5f5f5; padding: 15px; overflow: auto; font-size: 12px; }}
             .btn {{ display: inline-block; padding: 10px 15px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; margin: 5px; }}
         </style>
@@ -1132,7 +1089,7 @@ def internal_error(error):
         <div style="margin-top: 20px;">
             <h3>您可以尝试:</h3>
             <a href="/login" class="btn">🔄 重新登录</a>
-            <a href="/" class="btn">🏠 返回首页</a>
+            <a href="/index" class="btn">🏠 返回首页</a>
             <a href="/health" class="btn">❤️ 健康检查</a>
         </div>
         
@@ -1146,7 +1103,7 @@ def internal_error(error):
     </html>
     """, 500
 
-# ========== 路由定义结束 ==========
+# ========== 修正后的路由定义结束 ==========
 
 # 启动配置
 if __name__ == '__main__':
