@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, url_for, session
 import json
-# 移除 qrcode, base64, BytesIO, PIL 相关导入
 import socket
 import hashlib
 from functools import wraps
@@ -254,13 +253,7 @@ def before_request():
     if client is None:
         init_app()
 
-@app.route('/logout')
-def logout():
-    """用户退出登录"""
-    username = session.get('user', {}).get('username', '未知用户')
-    session.pop('user', None)
-    print(f"✅ 用户 {username} 已退出登录")
-    return redirect(url_for('login'))
+# ========== 路由定义开始 ==========
 
 @app.route('/')
 def home():
@@ -279,6 +272,14 @@ def health():
         "database": db_status,
         "timestamp": datetime.now().isoformat()
     })
+
+@app.route('/logout')
+def logout():
+    """用户退出登录"""
+    username = session.get('user', {}).get('username', '未知用户')
+    session.pop('user', None)
+    print(f"✅ 用户 {username} 已退出登录")
+    return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -358,8 +359,6 @@ def index():
         <a href="/login">重新登录</a>
         """, 500
 
-# 其他路由保持不变，但需要添加客户端检查
-
 @app.route('/query', methods=['GET', 'POST'])
 @login_required()
 def query_manufacturer():
@@ -392,93 +391,6 @@ def query_manufacturer():
                 'manufacturer_id': f'eq.{manufacturer_id}',
                 'is_active': 'eq.true'
             })
-            
-            personnel_data = personnel_response['data'] or []
-            
-            if manufacturer_response['data']:
-                return render_template('manage.html', 
-                                     manufacturer=manufacturer_response['data'][0],
-                                     personnel=personnel_data,
-                                     user=user)
-            else:
-                if user['role'] in ['super_admin', 'manufacturer_admin']:
-                    return render_template('register.html', 
-                                         manufacturer_id=manufacturer_id,
-                                         user=user)
-                else:
-                    return render_template('query.html', 
-                                         error='厂家不存在且您没有注册权限', 
-                                         user=user)
-                
-        except Exception as e:
-            print(f"查询错误: {e}")
-            return render_template('query.html', error='系统错误，请稍后重试', user=user)
-    
-    return render_template('query.html', user=user)
-
-@app.route('/logout')
-def logout():
-    """用户退出登录"""
-    username = session.get('user', {}).get('username', '未知用户')
-    session.pop('user', None)
-    print(f"✅ 用户 {username} 已退出登录")
-    return redirect(url_for('login'))
-
-@app.route('/')
-@login_required()
-def index():
-    """系统首页"""
-    local_ip = get_local_ip()
-    port = 5000
-    
-    mobile_url = f"http://{local_ip}:{port}"
-    qr_code_data = generate_qr_code(mobile_url)
-    localhost_url = f"http://localhost:{port}"
-    
-    return render_template('index.html', 
-                         qr_code_data=qr_code_data, 
-                         mobile_url=mobile_url,
-                         localhost_url=localhost_url,
-                         local_ip=local_ip,
-                         user=session.get('user'),
-                         user_roles=USER_ROLES)
-
-@app.route('/query', methods=['GET', 'POST'])
-@login_required()
-def query_manufacturer():
-    """查询厂家信息页面"""
-    user = session.get('user')
-    
-    if request.method == 'POST':
-        manufacturer_id = request.form.get('manufacturer_id', '').strip()
-        
-        if not manufacturer_id:
-            return render_template('query.html', error='请输入厂家ID', user=user)
-        
-        try:
-            # 权限检查
-            if user['role'] == 'user' and user.get('manufacturer_id') != manufacturer_id:
-                return render_template('query.html', 
-                                     error='您只能查询自己厂家的信息', 
-                                     user=user)
-            
-            manufacturer_response = client.select(
-                'manufacturers', 
-                {'manufacturer_id': f'eq.{manufacturer_id}'}
-            )
-            
-            if manufacturer_response['error']:
-                return render_template('query.html', 
-                                     error=f"查询失败: {manufacturer_response['error']}", 
-                                     user=user)
-            
-            personnel_response = client.select(
-                'maintenance_personnel', 
-                {
-                    'manufacturer_id': f'eq.{manufacturer_id}',
-                    'is_active': 'eq.true'
-                }
-            )
             
             personnel_data = personnel_response['data'] or []
             
@@ -1030,6 +942,7 @@ def add_user():
     except Exception as e:
         print(f"添加用户错误: {e}")
         return jsonify({'success': False, 'error': '系统错误'})
+
 @app.route('/reset_password', methods=['POST'])
 @login_required(role=['super_admin'])
 def reset_password():
@@ -1191,6 +1104,9 @@ def internal_error(error):
     </body>
     </html>
     """, 500
+
+# ========== 路由定义结束 ==========
+
 # 启动配置
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
