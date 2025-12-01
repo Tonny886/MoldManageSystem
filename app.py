@@ -257,15 +257,17 @@ def before_request():
 
 @app.route('/')
 def home():
-    return jsonify({
-        "status": "success", 
-        "message": "厂家保养人员管理系统",
-        "platform": "Render",
-        "database_connected": client is not None
-    })
+    """根路径重定向"""
+    # 如果用户已登录，重定向到首页
+    if 'user' in session:
+        return redirect(url_for('index'))
+    # 否则重定向到登录页
+    else:
+        return redirect(url_for('login'))
 
 @app.route('/health')
 def health():
+    """健康检查端点（独立于登录状态）"""
     db_status = "connected" if client else "disconnected"
     return jsonify({
         "status": "healthy",
@@ -1055,6 +1057,45 @@ def reset_admin():
 @app.route('/static/<path:filename>')
 def static_files(filename):
     return send_from_directory(app.static_folder, filename)
+
+#欢迎页面
+@app.route('/')
+def home():
+    """根路径"""
+    # 如果用户已登录，重定向到首页
+    if 'user' in session:
+        return redirect(url_for('index'))
+    # 否则显示欢迎页面
+    else:
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>厂家保养人员管理系统</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+                .container { max-width: 600px; margin: 0 auto; }
+                .btn { display: inline-block; padding: 12px 24px; background: #007bff; color: white; 
+                       text-decoration: none; border-radius: 5px; margin: 10px; }
+                .btn-secondary { background: #6c757d; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🏭 厂家保养人员管理系统</h1>
+                <p>专业的企业人员管理系统，支持权限管理和厂家数据管理</p>
+                <div style="margin: 30px 0;">
+                    <a href="/login" class="btn">🔐 登录系统</a>
+                    <a href="/health" class="btn btn-secondary">❤️ 系统状态</a>
+                </div>
+                <div style="margin-top: 40px; color: #666;">
+                    <p>默认管理员账号: <strong>admin</strong> / <strong>admin123</strong></p>
+                    <p>© 2024 厂家保养人员管理系统 - Powered by Flask & Supabase</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
 
 # 错误处理
 @app.errorhandler(404)
