@@ -254,6 +254,14 @@ def before_request():
     if client is None:
         init_app()
 
+@app.route('/logout')
+def logout():
+    """用户退出登录"""
+    username = session.get('user', {}).get('username', '未知用户')
+    session.pop('user', None)
+    print(f"✅ 用户 {username} 已退出登录")
+    return redirect(url_for('login'))
+
 @app.route('/')
 def home():
     return jsonify({
@@ -324,25 +332,34 @@ def login():
 @app.route('/index')
 @login_required()
 def index():
+    """系统首页"""
     try:
+        # 验证用户会话
+        user = session.get('user')
+        if not user:
+            return redirect(url_for('login'))
+            
         current_url = request.host_url.rstrip('/')
-        # 移除二维码生成，只传递URL
-        qr_code_data = None
         
+        # 简化首页数据，避免复杂逻辑
         return render_template('index.html', 
-                             qr_code_data=qr_code_data, 
                              mobile_url=current_url,
                              localhost_url=current_url,
                              local_ip=current_url.split('//')[-1],
-                             user=session.get('user'),
+                             user=user,
                              user_roles=USER_ROLES)
+                             
     except Exception as e:
-        print(f"首页错误: {e}")
-        return render_template('index.html', 
-                             user=session.get('user'),
-                             user_roles=USER_ROLES)
+        print(f"❌ 首页渲染错误: {str(e)}")
+        # 使用简单的错误响应，避免模板错误循环
+        return f"""
+        <h1>首页加载失败</h1>
+        <p>错误: {str(e)}</p>
+        <a href="/login">重新登录</a>
+        """, 500
 
 # 其他路由保持不变，但需要添加客户端检查
+
 @app.route('/query', methods=['GET', 'POST'])
 @login_required()
 def query_manufacturer():
@@ -399,6 +416,728 @@ def query_manufacturer():
     
     return render_template('query.html', user=user)
 
+@app.route('/logout')
+def logout():
+    """用户退出登录"""
+    username = session.get('user', {}).get('username', '未知用户')
+    session.pop('user', None)
+    print(f"✅ 用户 {username} 已退出登录")
+    return redirect(url_for('login'))
+
+@app.route('/')
+@login_required()
+def index():
+    """系统首页"""
+    local_ip = get_local_ip()
+    port = 5000
+    
+    mobile_url = f"http://{local_ip}:{port}"
+    qr_code_data = generate_qr_code(mobile_url)
+    localhost_url = f"http://localhost:{port}"
+    
+    return render_template('index.html', 
+                         qr_code_data=qr_code_data, 
+                         mobile_url=mobile_url,
+                         localhost_url=localhost_url,
+                         local_ip=local_ip,
+                         user=session.get('user'),
+                         user_roles=USER_ROLES)
+
+@app.route('/query', methods=['GET', 'POST'])
+@login_required()
+def query_manufacturer():
+    """查询厂家信息页面"""
+    user = session.get('user')
+    
+    if request.method == 'POST':
+        manufacturer_id = request.form.get('manufacturer_id', '').strip()
+        
+        if not manufacturer_id:
+            return render_template('query.html', error='请输入厂家ID', user=user)
+        
+        try:
+            # 权限检查
+            if user['role'] == 'user' and user.get('manufacturer_id') != manufacturer_id:
+                return render_template('query.html', 
+                                     error='您只能查询自己厂家的信息', 
+                                     user=user)
+            
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            if manufacturer_response['error']:
+                return render_template('query.html', 
+                                     error=f"查询失败: {manufacturer_response['error']}", 
+                                     user=user)
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            if manufacturer_response['data']:
+                return render_template('manage.html', 
+                                     manufacturer=manufacturer_response['data'][0],
+                                     personnel=personnel_data,
+                                     user=user)
+            else:
+                if user['role'] in ['super_admin', 'manufacturer_admin']:
+                    return render_template('register.html', 
+                                         manufacturer_id=manufacturer_id,
+                                         user=user)
+                else:
+                    return render_template('query.html', 
+                                         error='厂家不存在且您没有注册权限', 
+                                         user=user)
+                
+        except Exception as e:
+            print(f"查询错误: {e}")
+            return render_template('query.html', error='系统错误，请稍后重试', user=user)
+    
+    return render_template('query.html', user=user)
+
+@app.route('/register', methods=['POST'])
+@login_required(role=['super_admin', 'manufacturer_admin'])
+def register_manufacturer():
+    """新厂家注册"""
+    try:
+        data = {
+            'manufacturer_id': request.form.get('manufacturer_id'),
+            'name': request.form.get('name'),
+            'contact_person': request.form.get('contact_person'),
+            'phone': request.form.get('phone'),
+            'email': request.form.get('email')
+        }
+        
+        if not all([data['manufacturer_id'], data['name'], data['contact_person'], data['phone']]):
+            return render_template('register.html', 
+                                 manufacturer_id=data['manufacturer_id'],
+                                 error='请填写所有必填字段',
+                                 user=session.get('user'))
+        
+        response = client.insert('manufacturers', data)
+        
+        if response['error']:
+            return render_template('register.html', 
+                                 manufacturer_id=data['manufacturer_id'],
+                                 error=f'注册失败: {response["error"]}',
+                                 user=session.get('user'))
+        else:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{data["manufacturer_id"]}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{data["manufacturer_id"]}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 user=session.get('user'))
+            
+    except Exception as e:
+        print(f"注册错误: {e}")
+        return render_template('register.html', 
+                             manufacturer_id=request.form.get('manufacturer_id'),
+                             error='系统错误，请稍后重试',
+                             user=session.get('user'))
+
+@app.route('/add_personnel', methods=['POST'])
+@login_required()
+def add_personnel():
+    """新增保养人员"""
+    try:
+        manufacturer_id = request.form.get('manufacturer_id')
+        user = session.get('user')
+        
+        if user['role'] == 'user' and user.get('manufacturer_id') != manufacturer_id:
+            return render_template('error.html', 
+                                error="权限不足", 
+                                message="您只能管理自己厂家的人员"), 403
+        
+        manufacturer_name = request.form.get('manufacturer_name')
+        
+        new_personnel = {
+            'manufacturer_id': manufacturer_id,
+            'personnel_name': request.form.get('personnel_name'),
+            'hire_date': request.form.get('hire_date'),
+            'position': request.form.get('position'),
+            'name_id': request.form.get('name_id'),
+            'manufacturer_name': manufacturer_name,
+            'note': request.form.get('note')
+        }
+        
+        if not new_personnel['personnel_name']:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 error='请输入保养人员姓名',
+                                 user=user)
+        
+        response = client.insert('maintenance_personnel', new_personnel)
+        
+        if response['error']:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 error=f'添加失败: {response["error"]}',
+                                 user=user)
+        else:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 success='保养人员添加成功',
+                                 user=user)
+        
+    except Exception as e:
+        print(f"添加人员错误: {e}")
+        manufacturer_response = client.select(
+            'manufacturers', 
+            {'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}'}
+        )
+        
+        personnel_response = client.select(
+            'maintenance_personnel', 
+            {
+                'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}',
+                'is_active': 'eq.true'
+            }
+        )
+        
+        personnel_data = personnel_response['data'] or []
+        
+        return render_template('manage.html', 
+                             manufacturer=manufacturer_response['data'][0],
+                             personnel=personnel_data,
+                             error='添加失败，系统错误',
+                             user=session.get('user'))
+
+@app.route('/update_personnel', methods=['POST'])
+@login_required()
+def update_personnel():
+    """更新保养人员信息"""
+    try:
+        update_data = {
+            'personnel_name': request.form.get('personnel_name'),
+            'hire_date': request.form.get('hire_date'),
+            'position': request.form.get('position'),
+            'name_id': request.form.get('name_id'),
+            'manufacturer_name': request.form.get('manufacturer_name'),
+            'note': request.form.get('note')
+        }
+        
+        personnel_id = request.form.get('personnel_id')
+        manufacturer_id = request.form.get('manufacturer_id')
+        user = session.get('user')
+        
+        if user['role'] == 'user' and user.get('manufacturer_id') != manufacturer_id:
+            return render_template('error.html', 
+                                error="权限不足", 
+                                message="您只能管理自己厂家的人员"), 403
+        
+        if not update_data['personnel_name']:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 error='请输入保养人员姓名',
+                                 user=user)
+        
+        response = client.update(
+            'maintenance_personnel', 
+            update_data, 
+            {'id': f'eq.{personnel_id}'}
+        )
+        
+        if response['error']:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 error=f'更新失败: {response["error"]}',
+                                 user=user)
+        else:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 success='保养人员信息更新成功',
+                                 user=user)
+        
+    except Exception as e:
+        print(f"更新人员错误: {e}")
+        manufacturer_response = client.select(
+            'manufacturers', 
+            {'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}'}
+        )
+        
+        personnel_response = client.select(
+            'maintenance_personnel', 
+            {
+                'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}',
+                'is_active': 'eq.true'
+            }
+        )
+        
+        personnel_data = personnel_response['data'] or []
+        
+        return render_template('manage.html', 
+                             manufacturer=manufacturer_response['data'][0],
+                             personnel=personnel_data,
+                             error='更新失败，系统错误',
+                             user=session.get('user'))
+
+@app.route('/delete_personnel', methods=['POST'])
+@login_required()
+def delete_personnel():
+    """删除保养人员（软删除）"""
+    try:
+        personnel_id = request.form.get('personnel_id')
+        manufacturer_id = request.form.get('manufacturer_id')
+        user = session.get('user')
+        
+        if user['role'] == 'user' and user.get('manufacturer_id') != manufacturer_id:
+            return render_template('error.html', 
+                                error="权限不足", 
+                                message="您只能管理自己厂家的人员"), 403
+        
+        response = client.update(
+            'maintenance_personnel', 
+            {
+                'is_active': False
+            }, 
+            {'id': f'eq.{personnel_id}'}
+        )
+        
+        if response['error']:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 error=f'删除失败: {response["error"]}',
+                                 user=user)
+        else:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 success='保养人员删除成功',
+                                 user=user)
+        
+    except Exception as e:
+        print(f"删除人员错误: {e}")
+        manufacturer_response = client.select(
+            'manufacturers', 
+            {'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}'}
+        )
+        
+        personnel_response = client.select(
+            'maintenance_personnel', 
+            {
+                'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}',
+                'is_active': 'eq.true'
+            }
+        )
+        
+        personnel_data = personnel_response['data'] or []
+        
+        return render_template('manage.html', 
+                             manufacturer=manufacturer_response['data'][0],
+                             personnel=personnel_data,
+                             error='删除失败，系统错误',
+                             user=session.get('user'))
+
+@app.route('/restore_personnel', methods=['POST'])
+@login_required()
+def restore_personnel():
+    """恢复已删除的保养人员"""
+    try:
+        personnel_id = request.form.get('personnel_id')
+        manufacturer_id = request.form.get('manufacturer_id')
+        user = session.get('user')
+        
+        if user['role'] == 'user' and user.get('manufacturer_id') != manufacturer_id:
+            return render_template('error.html', 
+                                error="权限不足", 
+                                message="您只能管理自己厂家的人员"), 403
+        
+        response = client.update(
+            'maintenance_personnel', 
+            {
+                'is_active': True
+            }, 
+            {'id': f'eq.{personnel_id}'}
+        )
+        
+        if response['error']:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 error=f'恢复失败: {response["error"]}',
+                                 user=user)
+        else:
+            manufacturer_response = client.select(
+                'manufacturers', 
+                {'manufacturer_id': f'eq.{manufacturer_id}'}
+            )
+            
+            personnel_response = client.select(
+                'maintenance_personnel', 
+                {
+                    'manufacturer_id': f'eq.{manufacturer_id}',
+                    'is_active': 'eq.true'
+                }
+            )
+            
+            personnel_data = personnel_response['data'] or []
+            
+            return render_template('manage.html', 
+                                 manufacturer=manufacturer_response['data'][0],
+                                 personnel=personnel_data,
+                                 success='保养人员恢复成功',
+                                 user=user)
+        
+    except Exception as e:
+        print(f"恢复人员错误: {e}")
+        manufacturer_response = client.select(
+            'manufacturers', 
+            {'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}'}
+        )
+        
+        personnel_response = client.select(
+            'maintenance_personnel', 
+            {
+                'manufacturer_id': f'eq.{request.form.get("manufacturer_id")}',
+                'is_active': 'eq.true'
+            }
+        )
+        
+        personnel_data = personnel_response['data'] or []
+        
+        return render_template('manage.html', 
+                             manufacturer=manufacturer_response['data'][0],
+                             personnel=personnel_data,
+                             error='恢复失败，系统错误',
+                             user=session.get('user'))
+
+@app.route('/user_management')
+@login_required(role=['super_admin', 'manufacturer_admin'])
+def user_management():
+    """用户管理页面"""
+    users_response = client.select('users')
+    manufacturers_response = client.select('manufacturers')
+    
+    users = users_response['data']
+    manufacturers = manufacturers_response['data']
+    
+    user = session.get('user')
+    if user['role'] == 'manufacturer_admin':
+        users = [u for u in users if u.get('manufacturer_id') == user.get('manufacturer_id')]
+    
+    return render_template('user_management.html', 
+                         users=users, 
+                         manufacturers=manufacturers,
+                         user=user,
+                         user_roles=USER_ROLES)
+
+@app.route('/add_user', methods=['POST'])
+@login_required(role=['super_admin', 'manufacturer_admin'])
+def add_user():
+    """添加新用户"""
+    try:
+        # 获取原始密码
+        raw_password = request.form.get('password')
+        
+        user_data = {
+            'username': request.form.get('username'),
+            'password': hash_password(raw_password),  # 确保密码哈希
+            'real_name': request.form.get('real_name'),
+            'role': request.form.get('role'),
+            'manufacturer_id': request.form.get('manufacturer_id') or None,
+            'email': request.form.get('email'),
+            'phone': request.form.get('phone'),
+            'is_active': True,
+            'created_by': session.get('user')['username']
+        }
+        
+        if not all([user_data['username'], user_data['real_name'], user_data['role'], raw_password]):
+            return jsonify({'success': False, 'error': '请填写所有必填字段'})
+        
+        current_user = session.get('user')
+        if current_user['role'] == 'manufacturer_admin':
+            if user_data['role'] != 'user':
+                return jsonify({'success': False, 'error': '您只能创建普通用户'})
+            user_data['manufacturer_id'] = current_user.get('manufacturer_id')
+        
+        existing_user_response = client.select('users', {'username': f'eq.{user_data["username"]}'})
+        if existing_user_response['data']:
+            return jsonify({'success': False, 'error': '用户名已存在'})
+        
+        response = client.insert('users', user_data)
+        
+        if response['error']:
+            return jsonify({'success': False, 'error': response['error']})
+        else:
+            print(f"✅ 新用户 {user_data['username']} 创建成功")
+            print(f"🔐 密码哈希: {user_data['password']}")
+            return jsonify({'success': True, 'message': '用户添加成功'})
+        
+    except Exception as e:
+        print(f"添加用户错误: {e}")
+        return jsonify({'success': False, 'error': '系统错误'})
+@app.route('/reset_password', methods=['POST'])
+@login_required(role=['super_admin'])
+def reset_password():
+    """重置用户密码（仅超级管理员）"""
+    try:
+        username = request.form.get('username')
+        new_password = request.form.get('new_password')
+        
+        if not username or not new_password:
+            return jsonify({'success': False, 'error': '请提供用户名和新密码'})
+        
+        # 查找用户
+        user_response = client.select('users', {'username': f'eq.{username}'})
+        if not user_response['data']:
+            return jsonify({'success': False, 'error': '用户不存在'})
+        
+        # 更新密码为哈希值
+        hashed_password = hash_password(new_password)
+        update_response = client.update(
+            'users', 
+            {'password': hashed_password}, 
+            {'username': f'eq.{username}'}
+        )
+        
+        if update_response['error']:
+            return jsonify({'success': False, 'error': update_response['error']})
+        else:
+            print(f"✅ 用户 {username} 密码重置成功")
+            print(f"🔐 新密码哈希: {hashed_password}")
+            return jsonify({'success': True, 'message': '密码重置成功'})
+            
+    except Exception as e:
+        print(f"重置密码错误: {e}")
+        return jsonify({'success': False, 'error': '系统错误'})
+    
+@app.route('/admin')
+@login_required(role=['super_admin'])
+def admin():
+    """系统管理页面"""
+    # 获取所有数据用于统计
+    manufacturers_response = client.select('manufacturers')
+    personnel_response = client.select('maintenance_personnel')
+    users_response = client.select('users')
+    
+    data = {
+        'manufacturers': manufacturers_response['data'],
+        'maintenance_personnel': personnel_response['data'],
+        'users': users_response['data']
+    }
+    
+    return render_template('admin.html', data=data, user=session.get('user'))
+
+@app.route('/export')
+@login_required(role=['super_admin', 'manufacturer_admin'])
+def export_data():
+    """导出数据"""
+    manufacturers_response = client.select('manufacturers')
+    personnel_response = client.select('maintenance_personnel')
+    users_response = client.select('users')
+    
+    data = {
+        'manufacturers': manufacturers_response['data'],
+        'maintenance_personnel': personnel_response['data'],
+        'users': users_response['data']
+    }
+    
+    return jsonify(data)
+
+@app.route('/check-structure')
+@login_required(role=['super_admin', 'manufacturer_admin'])
+def check_structure():
+    """检查数据结构"""
+    manufacturers_response = client.select('manufacturers', {'limit': '1'})
+    personnel_response = client.select('maintenance_personnel', {'limit': '1'})
+    
+    manufacturers_data = manufacturers_response['data']
+    personnel_data = personnel_response['data']
+    
+    manufacturers_ok = True
+    manufacturers_fields = set()
+    if manufacturers_data:
+        manufacturers_fields = set(manufacturers_data[0].keys())
+        expected_manufacturers_fields = {'id', 'manufacturer_id', 'name', 'contact_person', 'phone', 'email', 'created_at'}
+        manufacturers_ok = manufacturers_fields == expected_manufacturers_fields
+    
+    personnel_ok = True
+    personnel_fields = set()
+    if personnel_data:
+        personnel_fields = set(personnel_data[0].keys())
+        expected_personnel_fields = {'id', 'manufacturer_id', 'personnel_name', 'hire_date', 'position', 'is_active', 'created_at', 'updated_at', 'name_id', 'manufacturer_name', 'note'}
+        personnel_ok = personnel_fields == expected_personnel_fields
+    
+    return jsonify({
+        'manufacturers_structure_ok': manufacturers_ok,
+        'manufacturers_fields': list(manufacturers_fields),
+        'personnel_structure_ok': personnel_ok,
+        'personnel_fields': list(personnel_fields),
+        'expected_manufacturers_fields': ['id', 'manufacturer_id', 'name', 'contact_person', 'phone', 'email', 'created_at'],
+        'expected_personnel_fields': ['id', 'manufacturer_id', 'personnel_name', 'hire_date', 'position', 'is_active', 'created_at', 'updated_at', 'name_id', 'manufacturer_name', 'note']
+    })
+
+@app.route('/reset_admin')
+def reset_admin():
+    """重置管理员账户（开发使用）"""
+    # 确保管理员用户存在
+    ensure_admin_user()
+    return redirect(url_for('login'))
+
 # 静态文件路由
 @app.route('/static/<path:filename>')
 def static_files(filename):
@@ -411,8 +1150,47 @@ def not_found(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    return render_template('error.html', error="服务器内部错误", message="服务器遇到意外错误，请稍后重试"), 500
-
+    """500错误处理 - 使用简单HTML避免模板错误"""
+    import traceback
+    error_traceback = traceback.format_exc()
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>500 - 服务器错误</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
+            .error {{ background: #ffeaea; padding: 20px; border-radius: 5px; }}
+            .success {{ background: #eaffea; padding: 20px; border-radius: 5px; }}
+            pre {{ background: #f5f5f5; padding: 15px; overflow: auto; font-size: 12px; }}
+            .btn {{ display: inline-block; padding: 10px 15px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; margin: 5px; }}
+        </style>
+    </head>
+    <body>
+        <h1>🚨 500 - 服务器内部错误</h1>
+        
+        <div class="error">
+            <h2>错误信息:</h2>
+            <p><strong>{str(error)}</strong></p>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <h3>您可以尝试:</h3>
+            <a href="/login" class="btn">🔄 重新登录</a>
+            <a href="/" class="btn">🏠 返回首页</a>
+            <a href="/health" class="btn">❤️ 健康检查</a>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <details>
+                <summary>查看技术详情（用于调试）</summary>
+                <pre>{error_traceback}</pre>
+            </details>
+        </div>
+    </body>
+    </html>
+    """, 500
 # 启动配置
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
