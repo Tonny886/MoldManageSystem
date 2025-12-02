@@ -9,6 +9,10 @@ import socket
 from supabase import create_client, Client
 import atexit
 import logging
+import threading
+import requests
+import time
+from datetime import timedelta
 
 # ========== 配置日志 ==========
 logging.basicConfig(
@@ -614,15 +618,15 @@ def system_status():
                              message=str(e),
                              user=session.get('user'))
 
-# ========== 新增：清理和退出处理 ==========
-def cleanup_on_exit():
-    """应用退出时的清理工作"""
-    logger.info("🛑 应用正在关闭...")
-    anti_sleep.stop()
-    logger.info("✅ 清理完成")
+# # ========== 新增：清理和退出处理 ==========
+# def cleanup_on_exit():
+#     """应用退出时的清理工作"""
+#     logger.info("🛑 应用正在关闭...")
+#     anti_sleep.stop()
+#     logger.info("✅ 清理完成")
 
-# 注册退出处理
-atexit.register(cleanup_on_exit)
+# # 注册退出处理
+# atexit.register(cleanup_on_exit)
 
 @app.route('/logout')
 def logout():
@@ -1461,6 +1465,17 @@ def internal_error(error):
 #     print(f"🚀 启动厂家保养人员管理系统在端口 {port}")
 #     app.run(host='0.0.0.0', port=port, debug=False)
 # ========== 修改：主函数启动 ==========
+# ========== 新增：清理和退出处理 ==========
+def cleanup_on_exit():
+    """应用退出时的清理工作"""
+    logger.info("🛑 应用正在关闭...")
+    anti_sleep.stop()
+    logger.info("✅ 清理完成")
+
+# 注册退出处理
+atexit.register(cleanup_on_exit)
+
+# ========== 修改：主函数启动 ==========
 if __name__ == '__main__':
     # 初始化应用
     if not init_app():
@@ -1472,6 +1487,15 @@ if __name__ == '__main__':
     host = os.environ.get('HOST', '0.0.0.0')
     debug_mode = os.environ.get('DEBUG', 'False').lower() == 'true'
     
+    # 获取应用URL（不使用request对象）
+    # 如果是Render环境，使用环境变量获取URL
+    render_external_url = os.getenv('RENDER_EXTERNAL_URL', '')
+    if render_external_url:
+        base_url = render_external_url.rstrip('/')
+    else:
+        # 本地开发环境
+        base_url = f'http://{host}:{port}' if host != '0.0.0.0' else f'http://localhost:{port}'
+    
     # 启动信息
     startup_msg = f"""
     🚀 厂家保养人员管理系统启动
@@ -1479,8 +1503,8 @@ if __name__ == '__main__':
     🔧 调试模式: {debug_mode}
     🛡️ 防休眠: 已启用 ({anti_sleep.platform} 优化)
     ⏰ 唤醒间隔: {anti_sleep.wakeup_interval}秒
-    📊 健康检查: {request.host_url.rstrip('/')}/health
-    🔔 唤醒端点: {request.host_url.rstrip('/')}/wakeup
+    📊 健康检查: {base_url}/health
+    🔔 唤醒端点: {base_url}/wakeup
     """
     
     print(startup_msg)
