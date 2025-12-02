@@ -1345,7 +1345,7 @@ def admin():
     return render_template('admin.html', data=data, user=session.get('user'))
 
 @app.route('/export')
-@login_required(role=['super_admin', 'manufacturer_admin'])
+@login_required(role=['super_admin'])
 def export_data():
     """导出数据"""
     manufacturers_response = client.select('manufacturers')
@@ -1361,7 +1361,8 @@ def export_data():
     return jsonify(data)
 
 @app.route('/check-structure')
-@login_required(role=['super_admin', 'manufacturer_admin'])
+#权限改为超级管理员
+@login_required(role=['super_admin'])
 def check_structure():
     """检查数据结构"""
     manufacturers_response = client.select('manufacturers', {'limit': '1'})
