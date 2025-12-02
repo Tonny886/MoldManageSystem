@@ -3,23 +3,11 @@ from dotenv import load_dotenv
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, send_from_directory, url_for, session
 import json
+import socket
 import hashlib
 from functools import wraps
-import socket
 from supabase import create_client, Client
-import atexit
-import logging
 
-# ========== 配置日志 ==========
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 # 加载环境变量
 load_dotenv()
 
@@ -38,157 +26,6 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=1800
 )
-# ========== 新增：防止休眠配置 ==========
-class AntiSleepManager:
-    """防止应用休眠的管理器"""
-    
-    def __init__(self, app):
-        self.app = app
-        self.is_active = False
-        self.wakeup_thread = None
-        self.last_activity = datetime.now()
-        self.self_wakeup_url = os.getenv('SELF_WAKEUP_URL')
-        self.external_ping_urls = [
-            "https://api.uptimerobot.com/v2/getMonitors",  # 仅示例，需要配置
-            "https://hc-ping.com/"  # Healthchecks.io 服务
-        ]
-        
-        # 读取平台特定配置
-        self.platform = os.getenv('PLATFORM', 'unknown').lower()
-        self.wakeup_interval = int(os.getenv('WAKEUP_INTERVAL', '300'))  # 默认5分钟
-        
-    def start(self):
-        """启动防休眠机制"""
-        if self.is_active:
-            return
-            
-        self.is_active = True
-        
-        # 方法1：内部定时自唤醒
-        if self.self_wakeup_url:
-            self._start_self_wakeup()
-            logger.info(f"✅ 启动自唤醒机制，间隔: {self.wakeup_interval}秒")
-        
-        # 方法2：记录活跃时间
-        self._start_activity_tracker()
-        
-        # 方法3：平台特定优化
-        self._apply_platform_optimizations()
-        
-        logger.info("🚀 防休眠管理器已启动")
-    
-    def _start_self_wakeup(self):
-        """启动自我唤醒线程"""
-        def wakeup_worker():
-            while self.is_active:
-                try:
-                    # 等待间隔时间
-                    time.sleep(self.wakeup_interval)
-                    
-                    # 检查是否需要唤醒
-                    idle_time = (datetime.now() - self.last_activity).seconds
-                    if idle_time > self.wakeup_interval:
-                        self._perform_self_wakeup()
-                        
-                except Exception as e:
-                    logger.error(f"❌ 自唤醒线程错误: {e}")
-                    time.sleep(60)  # 出错后等待1分钟
-        
-        self.wakeup_thread = threading.Thread(
-            target=wakeup_worker,
-            daemon=True,
-            name="WakeupThread"
-        )
-        self.wakeup_thread.start()
-    
-    def _perform_self_wakeup(self):
-        """执行自我唤醒"""
-        try:
-            # 尝试多种唤醒方式
-            
-            # 方式1：直接请求健康检查端点
-            if self.self_wakeup_url:
-                response = requests.get(
-                    f"{self.self_wakeup_url}/health",
-                    timeout=10,
-                    headers={'User-Agent': 'Wakeup-Bot/1.0'}
-                )
-                logger.info(f"🔔 自唤醒请求: {response.status_code}")
-            
-            # 方式2：执行轻量级数据库查询
-            self._perform_keepalive_query()
-            
-            # 方式3：更新最后活动时间
-            self.last_activity = datetime.now()
-            
-        except requests.RequestException as e:
-            logger.warning(f"⚠️ 自唤醒失败: {e}")
-        except Exception as e:
-            logger.error(f"❌ 自唤醒异常: {e}")
-    
-    def _perform_keepalive_query(self):
-        """执行保持连接查询"""
-        try:
-            # 简单的 Supabase 查询保持连接活跃
-            client = get_client()
-            if client:
-                # 执行一个简单的查询
-                client.select('users', {'limit': '1'})
-                logger.debug("✅ 保持连接查询成功")
-        except Exception as e:
-            logger.debug(f"保持连接查询失败: {e}")
-    
-    def _start_activity_tracker(self):
-        """启动活动跟踪"""
-        @self.app.before_request
-        def track_activity():
-            self.last_activity = datetime.now()
-    
-    def _apply_platform_optimizations(self):
-        """应用平台特定的优化"""
-        platform_optimizations = {
-            'render': self._optimize_for_render,
-            'heroku': self._optimize_for_heroku,
-            'railway': self._optimize_for_railway,
-            'vercel': self._optimize_for_vercel,
-        }
-        
-        if self.platform in platform_optimizations:
-            platform_optimizations[self.platform]()
-    
-    def _optimize_for_render(self):
-        """Render.com 平台优化"""
-        logger.info("🎯 应用 Render.com 优化配置")
-        # Render 免费版30分钟休眠，建议设置25分钟唤醒
-        self.wakeup_interval = min(self.wakeup_interval, 1500)  # 25分钟
-    
-    def _optimize_for_heroku(self):
-        """Heroku 平台优化"""
-        logger.info("🎯 应用 Heroku 优化配置")
-        # Heroku 免费版30分钟休眠
-        self.wakeup_interval = min(self.wakeup_interval, 1500)  # 25分钟
-    
-    def _optimize_for_railway(self):
-        """Railway 平台优化"""
-        logger.info("🎯 应用 Railway 优化配置")
-        # Railway 5分钟无活动停止
-        self.wakeup_interval = min(self.wakeup_interval, 240)  # 4分钟
-    
-    def _optimize_for_vercel(self):
-        """Vercel 平台优化"""
-        logger.info("🎯 应用 Vercel 优化配置")
-        # Vercel 无服务器函数，无需特殊处理
-    
-    def stop(self):
-        """停止防休眠机制"""
-        self.is_active = False
-        if self.wakeup_thread:
-            self.wakeup_thread.join(timeout=5)
-        logger.info("🛑 防休眠管理器已停止")
-
-# 初始化防休眠管理器
-anti_sleep = AntiSleepManager(app)
-
 
 # Supabase 配置
 SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -215,87 +52,16 @@ def get_client():
             print(f"❌ Supabase 初始化失败: {e}")
             client = None
     return client
-# ========== 新增：连接池和重试机制 ==========
-class ConnectionManager:
-    """数据库连接管理器"""
-    
-    def __init__(self):
-        self.retry_count = 0
-        self.max_retries = 3
-        self.retry_delay = 5  # 秒
-    
-    def ensure_connection(self):
-        """确保数据库连接正常"""
-        global client
-        
-        for attempt in range(self.max_retries):
-            try:
-                if client is None:
-                    client = get_client()
-                
-                # 测试连接
-                test_result = client.select('users', {'limit': '1'})
-                if test_result['error']:
-                    raise Exception(f"连接测试失败: {test_result['error']}")
-                
-                self.retry_count = 0
-                logger.debug("✅ 数据库连接正常")
-                return True
-                
-            except Exception as e:
-                self.retry_count += 1
-                logger.warning(f"⚠️ 数据库连接失败 ({attempt+1}/{self.max_retries}): {e}")
-                
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay)
-                    client = None  # 重置客户端
-                else:
-                    logger.error("❌ 数据库连接彻底失败")
-                    return False
-        
-        return False
 
-connection_manager = ConnectionManager()
-
-# ========== 修改：增强的初始化函数 ==========
 def init_app():
-    """增强的应用初始化"""
+    """应用初始化"""
     try:
-        # 启动防休眠机制
-        anti_sleep.start()
-        
-        # 确保数据库连接
-        if not connection_manager.ensure_connection():
-            logger.error("❌ 数据库连接初始化失败")
-            return False
-            
-        # 初始化数据
+        client = get_client()
         if client:
             init_supabase_data()
-            logger.info("✅ 厂家保养人员管理系统初始化完成")
-            
-            # 执行一次初始唤醒
-            anti_sleep._perform_self_wakeup()
-            
-            return True
-            
+            print("🚀 厂家保养人员管理系统初始化完成")
     except Exception as e:
-        logger.error(f"❌ 应用初始化失败: {e}")
-        return False
-# ========== 新增：快速恢复中间件 ==========
-@app.before_request
-def before_request():
-    """请求前处理 - 包含快速恢复机制"""
-    try:
-        # 记录活动时间
-        anti_sleep.last_activity = datetime.now()
-        
-        # 检查并恢复数据库连接
-        if not client:
-            connection_manager.ensure_connection()
-            
-    except Exception as e:
-        logger.error(f"❌ 请求前处理失败: {e}")
+        print(f"❌ 应用初始化失败: {e}")
 
 @app.context_processor
 def inject_user_roles():
@@ -499,130 +265,15 @@ def home():
     else:
         return redirect(url_for('login'))
 
-# ========== 增强的健康检查端点 ==========
 @app.route('/health')
 def health():
-    """增强的健康检查端点"""
-    try:
-        # 基础状态检查
-        db_status = "connected" if client else "disconnected"
-        
-        # 尝试数据库连接测试
-        db_test_result = "unknown"
-        if client:
-            test_response = client.select('users', {'limit': '1'})
-            db_test_result = "healthy" if not test_response['error'] else "unhealthy"
-        
-        # 收集系统信息
-        system_info = {
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "database": {
-                "connection": db_status,
-                "test": db_test_result
-            },
-            "anti_sleep": {
-                "active": anti_sleep.is_active,
-                "last_activity": anti_sleep.last_activity.isoformat(),
-                "idle_seconds": (datetime.now() - anti_sleep.last_activity).seconds,
-                "platform": anti_sleep.platform,
-                "wakeup_interval": anti_sleep.wakeup_interval
-            },
-            "memory": {
-                "threads": threading.active_count()
-            }
-        }
-        
-        logger.info(f"🔍 健康检查请求 - 状态: {system_info['status']}")
-        
-        return jsonify(system_info)
-        
-    except Exception as e:
-        logger.error(f"❌ 健康检查失败: {e}")
-        return jsonify({
-            "status": "unhealthy",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
-# ========== 新增：专门的外部队列唤醒端点 ==========
-@app.route('/wakeup', methods=['GET', 'POST'])
-def wakeup():
-    """外部唤醒端点 - 用于监控服务调用"""
-    try:
-        # 验证唤醒密钥（可选）
-        wakeup_key = request.args.get('key') or request.form.get('key')
-        expected_key = os.getenv('WAKEUP_KEY')
-        
-        if expected_key and wakeup_key != expected_key:
-            return jsonify({
-                "status": "error",
-                "message": "无效的唤醒密钥"
-            }), 401
-        
-        # 执行唤醒操作
-        anti_sleep.last_activity = datetime.now()
-        
-        # 执行数据库保持连接
-        anti_sleep._perform_keepalive_query()
-        
-        # 记录唤醒日志
-        logger.info(f"🔔 外部唤醒请求 - 来源: {request.remote_addr}")
-        
-        return jsonify({
-            "status": "success",
-            "message": "应用已唤醒",
-            "timestamp": datetime.now().isoformat(),
-            "next_wakeup": (datetime.now() + timedelta(seconds=anti_sleep.wakeup_interval)).isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"❌ 唤醒端点错误: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-# ========== 新增：状态监控端点 ==========
-@app.route('/status')
-@login_required(role=['super_admin'])
-def system_status():
-    """简化版系统状态页面"""
-    try:
-        # 基本状态信息
-        status_info = {
-            "应用状态": "运行中",
-            "数据库连接": "正常" if client else "断开",
-            "最后活动": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "用户角色": session.get('user', {}).get('role', '未知')
-        }
-        
-        # 添加防休眠信息（如果可用）
-        if hasattr(anti_sleep, 'is_active'):
-            status_info["防休眠状态"] = "运行中" if anti_sleep.is_active else "已停止"
-            status_info["平台"] = getattr(anti_sleep, 'platform', '未知')
-        
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        return render_template('status.html',
-                             status_info=status_info,
-                             current_time=current_time,
-                             user=session.get('user'))
-                             
-    except Exception as e:
-        return render_template('error.html',
-                             error="状态页面错误",
-                             message=str(e),
-                             user=session.get('user'))
-
-# ========== 新增：清理和退出处理 ==========
-def cleanup_on_exit():
-    """应用退出时的清理工作"""
-    logger.info("🛑 应用正在关闭...")
-    anti_sleep.stop()
-    logger.info("✅ 清理完成")
-
-# 注册退出处理
-atexit.register(cleanup_on_exit)
+    """健康检查端点"""
+    db_status = "connected" if client else "disconnected"
+    return jsonify({
+        "status": "healthy",
+        "database": db_status,
+        "timestamp": datetime.now().isoformat()
+    })
 
 @app.route('/logout')
 def logout():
@@ -1455,46 +1106,7 @@ def internal_error(error):
 # ========== 修正后的路由定义结束 ==========
 
 # 启动配置
-# if __name__ == '__main__':
-#     port = int(os.environ.get('PORT', 10000))
-#     print(f"🚀 启动厂家保养人员管理系统在端口 {port}")
-#     app.run(host='0.0.0.0', port=port, debug=False)
-# ========== 修改：主函数启动 ==========
 if __name__ == '__main__':
-    # 初始化应用
-    if not init_app():
-        logger.error("❌ 应用初始化失败，无法启动")
-        exit(1)
-    
-    # 获取配置
     port = int(os.environ.get('PORT', 10000))
-    host = os.environ.get('HOST', '0.0.0.0')
-    debug_mode = os.environ.get('DEBUG', 'False').lower() == 'true'
-    
-    # 启动信息
-    startup_msg = f"""
-    🚀 厂家保养人员管理系统启动
-    📍 地址: {host}:{port}
-    🔧 调试模式: {debug_mode}
-    🛡️ 防休眠: 已启用 ({anti_sleep.platform} 优化)
-    ⏰ 唤醒间隔: {anti_sleep.wakeup_interval}秒
-    📊 健康检查: {request.host_url.rstrip('/')}/health
-    🔔 唤醒端点: {request.host_url.rstrip('/')}/wakeup
-    """
-    
-    print(startup_msg)
-    logger.info(startup_msg)
-    
-    # 启动应用
-    try:
-        app.run(
-            host=host,
-            port=port,
-            debug=debug_mode,
-            threaded=True,  # 启用多线程
-            use_reloader=False  # 生产环境禁用自动重载
-        )
-    except KeyboardInterrupt:
-        logger.info("👋 应用被用户中断")
-    except Exception as e:
-        logger.error(f"❌ 应用启动失败: {e}")
+    print(f"🚀 启动厂家保养人员管理系统在端口 {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)

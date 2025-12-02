@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统状态监控</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .status-card {
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-healthy { background-color: #28a745; }
+        .status-warning { background-color: #ffc107; }
+        .status-error { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">保养人员管理系统</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/index">首页</a>
+                <a class="nav-link active" href="/status">系统状态</a>
+                <a class="nav-link" href="/logout">退出</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h2>📊 系统状态监控</h2>
+        <p class="text-muted">最后更新: {{ current_time }}</p>
+        
+        {% if status_info %}
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card status-card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">系统状态</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <tbody>
+                                {% for key, value in status_info.items() %}
+                                <tr>
+                                    <td><strong>{{ key }}</strong></td>
+                                    <td>
+                                        {% if value is string %}
+                                            {% if '正常' in value or '运行' in value or '正常' in value %}
+                                                <span class="status-indicator status-healthy"></span>
+                                            {% elif '断开' in value or '停止' in value or '异常' in value or '失败' in value %}
+                                                <span class="status-indicator status-error"></span>
+                                            {% else %}
+                                                <span class="status-indicator status-warning"></span>
+                                            {% endif %}
+                                        {% endif %}
+                                        {{ value }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="card status-card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">快速操作</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2 d-md-flex">
+                            <a href="/health" target="_blank" class="btn btn-outline-primary">健康检查</a>
+                            <a href="/wakeup" target="_blank" class="btn btn-outline-success">手动唤醒</a>
+                            <a href="/admin" class="btn btn-outline-secondary">管理面板</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card status-card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">防休眠状态</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="wakeupTimer" class="display-4 text-center mb-3">--:--</div>
+                        <p class="text-center">距离下次自动唤醒</p>
+                        
+                        <div class="mt-4">
+                            <h6>平台优化配置:</h6>
+                            <ul class="list-unstyled">
+                                <li>📱 检测平台: {{ status_info.get('平台', '未知') }}</li>
+                                <li>⏰ 唤醒间隔: {{ status_info.get('唤醒间隔', '未设置') }}</li>
+                                <li>🔄 最后活动: {{ status_info.get('最后活动', '未知') }}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-danger">
+            <h4>⚠️ 状态信息不可用</h4>
+            <p>无法获取系统状态信息，请检查应用配置。</p>
+            <a href="/health" class="btn btn-outline-primary">检查健康状态</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // 安全的唤醒倒计时
+        try {
+            // 尝试获取唤醒间隔和空闲时间
+            let wakeupInterval = parseInt("{{ status_info.get('唤醒间隔', '0') }}".replace('秒', '')) || 1500;
+            let lastActivity = "{{ status_info.get('最后活动', '') }}";
+            
+            // 如果无法计算，显示静态信息
+            if (!lastActivity || lastActivity === '未知') {
+                document.getElementById('wakeupTimer').textContent = "信息不足";
+            } else {
+                // 简单模拟：假设从最后活动开始计时
+                let remaining = Math.max(0, wakeupInterval - 60); // 假设60秒已过去
+                
+                function updateTimer() {
+                    if (remaining <= 0) {
+                        document.getElementById('wakeupTimer').textContent = "即将唤醒";
+                        remaining = wakeupInterval;
+                    } else {
+                        let minutes = Math.floor(remaining / 60);
+                        let seconds = remaining % 60;
+                        document.getElementById('wakeupTimer').textContent = 
+                            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        remaining--;
+                    }
+                }
+                
+                updateTimer();
+                setInterval(updateTimer, 1000);
+            }
+        } catch (e) {
+            document.getElementById('wakeupTimer').textContent = "计算错误";
+        }
+    </script>
+</body>
+</html>

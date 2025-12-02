@@ -2,13 +2,43 @@ services:
   - type: web
     name: mold-manage-system
     env: python
+    region: singapore
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    
+    # 构建命令
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    
+    # 优化启动命令
+    startCommand: |
+      echo "🚀 启动模具管理系统..."
+      gunicorn app:app \
+        --bind 0.0.0.0:$PORT \
+        --workers 1 \
+        --threads 2 \
+        --timeout 120 \
+        --access-logfile - \
+        --error-logfile - \
+        --capture-output \
+        --log-level info
+    
+    # 关键环境变量（非敏感）
     envVars:
-      - key: SUPABASE_URL
-        value: https://ohfbuvrnocrectvfjiyf.supabase.co
-      - key: SUPABASE_KEY  
-        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oZmJ1dnJub2NyZWN0dmZqaXlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4MzgzODUsImV4cCI6MjA3ODQxNDM4NX0.4p_hFt7QnKhG6iWwN8hTQtGuYa4YX-8RSS-ekr9kQBk
-      - key: SECRET_KEY
-        value: manufacturer-system-secret-key-2024
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: PLATFORM
+        value: render
+      - key: WAKEUP_INTERVAL
+        value: "1500"
+      - key: FLASK_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+    
+    # 健康检查（防止休眠）
+    healthCheckPath: /health
+    healthCheckTimeout: 30
+    initialDelaySecs: 20
+    
+    autoDeploy: true
